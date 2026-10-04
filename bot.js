@@ -1,5 +1,5 @@
 /*
- * DISCORD AI BOT - GEMINI ONLY (FULL FIX 404 MODELS)
+ * DISCORD AI BOT - GEMINI ONLY (UPDATED FOR GEMINI 3.8/2.5 API)
  * Node.js 18.18+ | discord.js v14 | Render Web Service
  */
 
@@ -37,14 +37,14 @@ const CLIENT_ID = env('CLIENT_ID');
 const GUILD_ID = env('GUILD_ID');
 const GEMINI_API_KEY = env('GEMINI_API_KEY');
 
-// Danh sách các model Gemini hợp lệ và khả dụng nhất
+// Cập nhật danh sách Model tương thích với Google AI Studio mới
 const CUSTOM_MODEL = env('GEMINI_MODEL');
 const MODEL_FALLBACK_LIST = [
   ...(CUSTOM_MODEL ? [CUSTOM_MODEL] : []),
+  'gemini-3.8-flash',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro-latest'
+  'gemini-flash'
 ];
 
 const REQUEST_TIMEOUT_MS = safeNumber(env('AI_TIMEOUT_MS'), 45000, 1000, 180000);
@@ -194,13 +194,12 @@ async function askGemini(question, mode, file) {
   const systemInstruction = PROMPTS[mode] || PROMPTS.fast;
   const promptContent = userPrompt(question, file);
   
-  // Xóa trùng lặp trong mảng thử nghiệm
   const uniqueModels = [...new Set(MODEL_FALLBACK_LIST)];
   let lastError = null;
 
   for (const modelName of uniqueModels) {
     try {
-      console.log(`[GEMINI] Thử gọi model: ${modelName}`);
+      console.log(`[GEMINI] Đang thử kết nối model: ${modelName}`);
       const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction: systemInstruction
@@ -223,29 +222,27 @@ async function askGemini(question, mode, file) {
       const answer = response.text();
 
       if (answer && answer.trim()) {
-        console.log(`[GEMINI SUCCESS] Model ${modelName} phản hồi thành công.`);
+        console.log(`[GEMINI SUCCESS] Model ${modelName} hoạt động tốt!`);
         return answer.trim();
       }
     } catch (err) {
       console.warn(`[GEMINI WARN] Model ${modelName} gặp lỗi: ${err.message}`);
       lastError = err;
 
-      // Nếu lỗi 404 (Not Found), tiếp tục thử model khác trong mảng
       if (err.message?.includes('404') || err.message?.includes('not found')) {
         continue;
       }
-      // Ngắt ngay nếu lỗi API Key
       if (err.message?.includes('API_KEY_INVALID') || err.message?.includes('403')) {
-        throw new Error('API Key Gemini không hợp lệ hoặc hết hạn.');
+        throw new Error('API Key Gemini không hợp lệ hoặc không đủ quyền.');
       }
     }
   }
 
-  throw new Error(`Tất cả các Gemini model thử nghiệm đều báo lỗi: ${lastError?.message || 'Không rõ'}`);
+  throw new Error(`Tất cả các model Gemini đều thất bại. Chi tiết: ${lastError?.message || 'Không rõ'}`);
 }
 
 // -------------------------
-// HTTP Server (Render Web Service Keep-Alive)
+// HTTP Server (Keep-Alive)
 // -------------------------
 const healthServer = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
@@ -269,7 +266,7 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, async readyClient => {
-  console.log(`[DISCORD] Bot đã kết nối thành công: ${readyClient.user.tag}`);
+  console.log(`[DISCORD] Bot đã đăng nhập thành công: ${readyClient.user.tag}`);
   await autoRegisterCommands();
 });
 
