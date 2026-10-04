@@ -1,4 +1,3 @@
-/*
 require('dotenv').config();
 
 const path = require('node:path');
@@ -15,33 +14,69 @@ const {
   Events
 } = require('discord.js');
 
-const env = name => (process.env[name] || '').trim();
+const env = name => String(process.env[name] || '').trim();
 
+const safeNumber = (value, fallback, min, max) => {
+  const number = Number(value);
+
+  return Number.isFinite(number) &&
+    number >= min &&
+    number <= max
+    ? number
+    : fallback;
+};
+
+// Không throw ở đầu file.
+// Render vẫn có thể mở health server và log rõ cấu hình thiếu.
 const DISCORD_TOKEN = env('DISCORD_TOKEN');
 const CLIENT_ID = env('CLIENT_ID');
 const GUILD_ID = env('GUILD_ID');
 const GEMINI_API_KEY = env('GEMINI_API_KEY');
 const GEMINI_MODEL = env('GEMINI_MODEL') || 'gemini-1.5-flash';
 
-const REQUEST_TIMEOUT_MS = Number(env('AI_TIMEOUT_MS') || 45000);
-const MAX_OUTPUT_TOKENS = Number(env('AI_MAX_OUTPUT_TOKENS') || 1200);
+const REQUEST_TIMEOUT_MS = safeNumber(
+  env('AI_TIMEOUT_MS'),
+  45000,
+  1000,
+  180000
+);
+
+const MAX_OUTPUT_TOKENS = safeNumber(
+  env('AI_MAX_OUTPUT_TOKENS'),
+  1200,
+  100,
+  8192
+);
+
 const MAX_ATTACHMENT_BYTES = 150 * 1024;
-const PORT = Number(process.env.PORT || 3000);
+
+const PORT = safeNumber(
+  process.env.PORT,
+  3000,
+  1,
+  65535
+);
 
 if (!DISCORD_TOKEN) {
-  throw new Error('Thiếu DISCORD_TOKEN trong .env');
+  console.error(
+    '[CONFIG WARNING] Thiếu DISCORD_TOKEN. Discord client sẽ không đăng nhập.'
+  );
 }
 
 if (!CLIENT_ID) {
-  throw new Error('Thiếu CLIENT_ID trong .env');
+  console.error(
+    '[CONFIG WARNING] Thiếu CLIENT_ID. Slash Commands sẽ không được auto-register.'
+  );
 }
 
 if (!GEMINI_API_KEY) {
-  throw new Error('Thiếu GEMINI_API_KEY trong .env');
+  console.error(
+    '[CONFIG WARNING] Thiếu GEMINI_API_KEY. Bot vẫn chạy nhưng sẽ báo lỗi khi nhận /bot.'
+  );
 }
 
 // -------------------------
-// Slash commands tự đăng ký khi bot ready
+// Slash commands
 // -------------------------
 
 const botCommand = new SlashCommandBuilder()
@@ -89,29 +124,50 @@ const commandCommand = new SlashCommandBuilder()
   .setName('command')
   .setDescription('Xem hướng dẫn sử dụng bot Gemini');
 
-async function registerCommands() {
-  const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+async function autoRegisterCommands() {
+  if (!DISCORD_TOKEN || !CLIENT_ID) {
+    console.error(
+      '[DEPLOY WARNING] Bỏ qua auto-register vì thiếu DISCORD_TOKEN hoặc CLIENT_ID.'
+    );
 
-  const route = GUILD_ID
-    ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
-    : Routes.applicationCommands(CLIENT_ID);
+    return false;
+  }
 
-  await rest.put(route, {
-    body: [
-      botCommand.toJSON(),
-      commandCommand.toJSON()
-    ]
-  });
+  try {
+    const rest = new REST({
+      version: '10'
+    }).setToken(DISCORD_TOKEN);
 
-  console.log(
-    GUILD_ID
-      ? `Đã đăng ký /bot và /command cho Guild ${GUILD_ID}.`
-      : 'Đã đăng ký /bot và /command Global.'
-  );
+    const route = GUILD_ID
+      ? Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID)
+      : Routes.applicationCommands(CLIENT_ID);
+
+    await rest.put(route, {
+      body: [
+        botCommand.toJSON(),
+        commandCommand.toJSON()
+      ]
+    });
+
+    console.log(
+      GUILD_ID
+        ? `[DEPLOY] Đã đăng ký /bot và /command cho Guild ${GUILD_ID}.`
+        : '[DEPLOY] Đã đăng ký /bot và /command Global.'
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      '[DEPLOY ERROR] Không thể auto-register Slash Commands:',
+      error.message
+    );
+
+    return false;
+  }
 }
 
 // -------------------------
-// Prompt và cấu hình mode
+// Prompt và mode
 // -------------------------
 
 const modes = {
@@ -154,7 +210,7 @@ Chế độ Sửa chữa: nêu vấn đề, nguyên nhân, cách sửa, rồi cu
 };
 
 // -------------------------
-// Tiện ích
+// Utilities
 // -------------------------
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -202,7 +258,10 @@ function splitText(text, max = 3900) {
       cut = max;
     }
 
-    chunks.push(remaining.slice(0, cut).trim());
+    chunks.push(
+      remaining.slice(0, cut).trim()
+    );
+
     remaining = remaining.slice(cut).trim();
   }
 
@@ -218,7 +277,9 @@ function extractCodeBlock(text) {
     /```(?:[a-zA-Z0-9_+#.-]+)?\s*\n([\s\S]*?)\n```/
   );
 
-  return match ? `${match[1].trimEnd()}\n` : null;
+  return match
+    ? `${match[1].trimEnd()}\n`
+    : null;
 }
 
 function repairedName(originalName) {
@@ -288,26 +349,30 @@ ${file.content}
 }
 
 // -------------------------
-// Gemini API duy nhất
+// Gemini API
 // -------------------------
 
 async function askGemini(question, mode, file) {
   if (!GEMINI_API_KEY) {
     throw Object.assign(
       new Error('Thiếu GEMINI_API_KEY.'),
-      { code: 'MISSING_GEMINI_API_KEY' }
+      {
+        code: 'MISSING_GEMINI_API_KEY'
+      }
     );
   }
 
   if (!GEMINI_MODEL) {
     throw Object.assign(
       new Error('Thiếu GEMINI_MODEL.'),
-      { code: 'MISSING_GEMINI_MODEL' }
+      {
+        code: 'MISSING_GEMINI_MODEL'
+      }
     );
   }
 
   const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/` +
+    'https://generativelanguage.googleapis.com/v1beta/models/' +
     `${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=` +
     `${encodeURIComponent(GEMINI_API_KEY)}`;
 
@@ -344,7 +409,9 @@ async function askGemini(question, mode, file) {
         ],
         generationConfig: {
           maxOutputTokens: MAX_OUTPUT_TOKENS,
-          temperature: mode === 'fast' ? 0.2 : 0.5
+          temperature: mode === 'fast'
+            ? 0.2
+            : 0.5
         }
       })
     });
@@ -354,30 +421,35 @@ async function askGemini(question, mode, file) {
     let data = {};
 
     try {
-      data = rawBody ? JSON.parse(rawBody) : {};
+      data = rawBody
+        ? JSON.parse(rawBody)
+        : {};
     } catch {
-      const error = new Error('Gemini trả về dữ liệu không hợp lệ.');
-      error.status = response.status;
-      throw error;
+      const parseError = new Error(
+        'Gemini trả về dữ liệu không hợp lệ.'
+      );
+
+      parseError.status = response.status;
+      throw parseError;
     }
 
     if (!response.ok) {
-      const error = new Error(
+      const apiError = new Error(
         data.error?.message ||
         `Gemini request failed (${response.status})`
       );
 
-      error.status = response.status;
-      throw error;
+      apiError.status = response.status;
+      throw apiError;
     }
 
     if (data.promptFeedback?.blockReason) {
-      const error = new Error(
+      const blockedError = new Error(
         `Gemini đã chặn yêu cầu: ${data.promptFeedback.blockReason}.`
       );
 
-      error.code = 'GEMINI_PROMPT_BLOCKED';
-      throw error;
+      blockedError.code = 'GEMINI_PROMPT_BLOCKED';
+      throw blockedError;
     }
 
     const candidate = data.candidates?.[0];
@@ -392,24 +464,29 @@ async function askGemini(question, mode, file) {
       .trim();
 
     if (!answer) {
-      const reason = candidate?.finishReason || 'UNKNOWN';
-
-      const error = new Error(
-        `Gemini không trả về nội dung (finishReason: ${reason}).`
+      const emptyError = new Error(
+        `Gemini không trả về nội dung (finishReason: ${candidate?.finishReason || 'UNKNOWN'}).`
       );
 
-      error.code = 'EMPTY_GEMINI_RESPONSE';
-      throw error;
+      emptyError.code = 'EMPTY_GEMINI_RESPONSE';
+      throw emptyError;
     }
 
     return answer;
+  } catch (error) {
+    console.error(
+      '[GEMINI ERROR]',
+      error.message
+    );
+
+    throw error;
   } finally {
     clearTimeout(timer);
   }
 }
 
 // -------------------------
-// Embed /command
+// /command help embed
 // -------------------------
 
 function helpEmbed() {
@@ -449,240 +526,322 @@ function helpEmbed() {
 }
 
 // -------------------------
-// Bot Discord và HTTP server cho Render
+// HTTP server cho Render
 // -------------------------
 
-const healthServer = http.createServer((request, response) => {
-  if (request.method === 'GET' && request.url === '/') {
-    response.writeHead(200, {
+const healthServer = http.createServer(
+  (request, response) => {
+    if (
+      request.method === 'GET' &&
+      request.url === '/'
+    ) {
+      response.writeHead(200, {
+        'Content-Type': 'text/plain; charset=utf-8'
+      });
+
+      response.end('Bot is running!');
+      return;
+    }
+
+    response.writeHead(404, {
       'Content-Type': 'text/plain; charset=utf-8'
     });
 
-    response.end('Bot is alive!');
-    return;
+    response.end('Not found');
   }
+);
 
-  response.writeHead(404, {
-    'Content-Type': 'text/plain; charset=utf-8'
-  });
-
-  response.end('Not found');
+healthServer.on('error', error => {
+  console.error(
+    '[HTTP ERROR] Health server:',
+    error.message
+  );
 });
 
-healthServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`Health server listening on port ${PORT}`);
-});
+healthServer.listen(
+  PORT,
+  '0.0.0.0',
+  () => {
+    console.log(
+      `[HTTP] Health server listening on 0.0.0.0:${PORT}`
+    );
+  }
+);
+
+// -------------------------
+// Discord client
+// -------------------------
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-client.once(Events.ClientReady, async readyClient => {
-  console.log(`Bot online: ${readyClient.user.tag}`);
+client.once(
+  Events.ClientReady,
+  async readyClient => {
+    console.log(
+      `[DISCORD] Bot online: ${readyClient.user.tag}`
+    );
 
-  try {
-    await registerCommands();
-  } catch (error) {
+    await autoRegisterCommands();
+  }
+);
+
+client.on(
+  Events.InteractionCreate,
+  async interaction => {
+    if (!interaction.isChatInputCommand()) {
+      return;
+    }
+
+    try {
+      if (interaction.commandName === 'command') {
+        await interaction.reply({
+          embeds: [helpEmbed()]
+        });
+
+        return;
+      }
+
+      if (interaction.commandName !== 'bot') {
+        return;
+      }
+
+      const question = interaction.options
+        .getString('cau_hoi', true)
+        .trim();
+
+      const mode = interaction.options
+        .getString('che_do', true);
+
+      const attachment = interaction.options
+        .getAttachment('file_dinh_kem');
+
+      const modeInfo = modes[mode] || modes.fast;
+      const startedAt = Date.now();
+
+      await interaction.deferReply();
+
+      let file;
+
+      if (attachment) {
+        const extension = path
+          .extname(attachment.name)
+          .toLowerCase();
+
+        if (!ALLOWED_EXTENSIONS.has(extension)) {
+          throw new Error(
+            `Loại file ${extension || '(không rõ)'} chưa được hỗ trợ.`
+          );
+        }
+
+        if (attachment.size > MAX_ATTACHMENT_BYTES) {
+          throw new Error(
+            'File quá lớn. Giới hạn đọc là 150 KB.'
+          );
+        }
+
+        const download = await fetch(
+          attachment.url,
+          {
+            signal: AbortSignal.timeout(15000)
+          }
+        );
+
+        if (!download.ok) {
+          throw new Error(
+            'Không thể tải file đính kèm từ Discord.'
+          );
+        }
+
+        const content = await download.text();
+
+        if (
+          Buffer.byteLength(content, 'utf8') >
+          MAX_ATTACHMENT_BYTES
+        ) {
+          throw new Error(
+            'File vượt quá giới hạn 150 KB sau khi tải.'
+          );
+        }
+
+        file = {
+          name: attachment.name,
+          content
+        };
+      }
+
+      const answer = await askGemini(
+        question,
+        mode,
+        file
+      );
+
+      const chunks = splitText(answer);
+
+      const embeds = chunks
+        .slice(0, 10)
+        .map((chunk, index) => {
+          const embed = new EmbedBuilder()
+            .setColor(modeInfo.color)
+            .setDescription(chunk);
+
+          if (index === 0) {
+            embed
+              .setTitle(
+                '🤖 HỆ THỐNG TRỢ LÝ DISCORD GEMINI'
+              )
+              .addFields(
+                {
+                  name: '👤 Người yêu cầu',
+                  value: `${interaction.user}`,
+                  inline: true
+                },
+                {
+                  name: '⚙️ Chế độ',
+                  value: modeInfo.label,
+                  inline: true
+                },
+                {
+                  name: '❓ Câu hỏi / File',
+                  value:
+                    `${question}${file ? `\n📎 ${file.name}` : ''}`
+                      .slice(0, 1024)
+                },
+                {
+                  name: '💬 Kết quả',
+                  value:
+                    chunks.length === 1
+                      ? chunk.slice(0, 1024)
+                      : 'Nội dung đầy đủ hiển thị bên dưới.'
+                }
+              );
+          }
+
+          if (index === chunks.length - 1) {
+            embed.setFooter({
+              text:
+                `Phản hồi sau ${Date.now() - startedAt}ms ` +
+                '• Gemini Discord Bot'
+            });
+          }
+
+          return embed;
+        });
+
+      if (chunks.length > 10) {
+        embeds[9].setDescription(
+          `${embeds[9].data.description}\n\n` +
+          '[Phản hồi đã rút gọn vì giới hạn Discord.]'
+        );
+      }
+
+      const files = [];
+
+      if (mode === 'repair' && file) {
+        const repaired = extractCodeBlock(answer);
+
+        files.push(
+          new AttachmentBuilder(
+            Buffer.from(repaired || answer, 'utf8'),
+            {
+              name: repaired
+                ? repairedName(file.name)
+                : `repair-report-${repairedName(file.name)}.md`
+            }
+          )
+        );
+      }
+
+      await interaction.editReply({
+        embeds,
+        files
+      });
+    } catch (error) {
+      console.error(
+        '[INTERACTION ERROR]',
+        {
+          userId: interaction.user?.id,
+          mode: interaction.isChatInputCommand()
+            ? interaction.options.getString('che_do')
+            : undefined,
+          hasAttachment: interaction.isChatInputCommand()
+            ? Boolean(
+                interaction.options.getAttachment(
+                  'file_dinh_kem'
+                )
+              )
+            : false,
+          error: error.message
+        }
+      );
+
+      const errorEmbed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle('Không thể xử lý yêu cầu')
+        .setDescription(friendlyError(error))
+        .setFooter({
+          text: 'Gemini Discord Bot'
+        });
+
+      try {
+        if (
+          interaction.deferred ||
+          interaction.replied
+        ) {
+          await interaction.editReply({
+            embeds: [errorEmbed]
+          });
+        } else {
+          await interaction.reply({
+            embeds: [errorEmbed],
+            ephemeral: true
+          });
+        }
+      } catch (replyError) {
+        console.error(
+          '[DISCORD REPLY ERROR]',
+          replyError.message
+        );
+      }
+    }
+  }
+);
+
+process.on(
+  'unhandledRejection',
+  error => {
     console.error(
-      'Đăng ký Slash Commands thất bại:',
+      '[UNHANDLED REJECTION]',
       error
     );
   }
-});
+);
 
-client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) {
-    return;
-  }
-
-  if (interaction.commandName === 'command') {
-    await interaction.reply({
-      embeds: [helpEmbed()]
-    });
-
-    return;
-  }
-
-  if (interaction.commandName !== 'bot') {
-    return;
-  }
-
-  const question = interaction.options
-    .getString('cau_hoi', true)
-    .trim();
-
-  const mode = interaction.options.getString('che_do', true);
-  const attachment = interaction.options.getAttachment('file_dinh_kem');
-  const modeInfo = modes[mode] || modes.fast;
-  const startedAt = Date.now();
-
-  await interaction.deferReply();
-
-  try {
-    let file;
-
-    if (attachment) {
-      const extension = path
-        .extname(attachment.name)
-        .toLowerCase();
-
-      if (!ALLOWED_EXTENSIONS.has(extension)) {
-        throw new Error(
-          `Loại file ${extension || '(không rõ)'} chưa được hỗ trợ.`
-        );
-      }
-
-      if (attachment.size > MAX_ATTACHMENT_BYTES) {
-        throw new Error(
-          'File quá lớn. Giới hạn đọc là 150 KB.'
-        );
-      }
-
-      const download = await fetch(
-        attachment.url,
-        {
-          signal: AbortSignal.timeout(15000)
-        }
-      );
-
-      if (!download.ok) {
-        throw new Error(
-          'Không thể tải file đính kèm từ Discord.'
-        );
-      }
-
-      const content = await download.text();
-
-      if (
-        Buffer.byteLength(content, 'utf8') >
-        MAX_ATTACHMENT_BYTES
-      ) {
-        throw new Error(
-          'File vượt quá giới hạn 150 KB sau khi tải.'
-        );
-      }
-
-      file = {
-        name: attachment.name,
-        content
-      };
-    }
-
-    const answer = await askGemini(
-      question,
-      mode,
-      file
+process.on(
+  'uncaughtException',
+  error => {
+    console.error(
+      '[UNCAUGHT EXCEPTION]',
+      error
     );
 
-    const chunks = splitText(answer);
-
-    const embeds = chunks
-      .slice(0, 10)
-      .map((chunk, index) => {
-        const embed = new EmbedBuilder()
-          .setColor(modeInfo.color)
-          .setDescription(chunk);
-
-        if (index === 0) {
-          embed
-            .setTitle(
-              '🤖 HỆ THỐNG TRỢ LÝ DISCORD GEMINI'
-            )
-            .addFields(
-              {
-                name: '👤 Người yêu cầu',
-                value: `${interaction.user}`,
-                inline: true
-              },
-              {
-                name: '⚙️ Chế độ',
-                value: modeInfo.label,
-                inline: true
-              },
-              {
-                name: '❓ Câu hỏi / File',
-                value:
-                  `${question}${file ? `\n📎 ${file.name}` : ''}`
-                    .slice(0, 1024)
-              },
-              {
-                name: '💬 Kết quả',
-                value:
-                  chunks.length === 1
-                    ? chunk.slice(0, 1024)
-                    : 'Nội dung đầy đủ hiển thị bên dưới.'
-              }
-            );
-        }
-
-        if (index === chunks.length - 1) {
-          embed.setFooter({
-            text:
-              `Phản hồi sau ${Date.now() - startedAt}ms ` +
-              '• Gemini Discord Bot'
-          });
-        }
-
-        return embed;
-      });
-
-    if (chunks.length > 10) {
-      embeds[9].setDescription(
-        `${embeds[9].data.description}\n\n` +
-        '[Phản hồi đã rút gọn vì giới hạn Discord.]'
-      );
-    }
-
-    const files = [];
-
-    if (mode === 'repair' && file) {
-      const repaired = extractCodeBlock(answer);
-
-      files.push(
-        new AttachmentBuilder(
-          Buffer.from(repaired || answer, 'utf8'),
-          {
-            name: repaired
-              ? repairedName(file.name)
-              : `repair-report-${repairedName(file.name)}.md`
-          }
-        )
-      );
-    }
-
-    await interaction.editReply({
-      embeds,
-      files
-    });
-  } catch (error) {
-    console.error('Gemini request failed:', {
-      userId: interaction.user.id,
-      mode,
-      hasAttachment: Boolean(attachment),
-      error: error.message
-    });
-
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle('Không thể xử lý yêu cầu')
-          .setDescription(friendlyError(error))
-          .setFooter({
-            text: 'Gemini Discord Bot'
-          })
-      ]
-    });
+    // Không process.exit ở đây để health server
+    // vẫn giữ Render service sống.
   }
-});
+);
 
-process.on('unhandledRejection', error => {
-  console.error('Unhandled rejection:', error);
-});
-
-process.on('uncaughtException', error => {
-  console.error('Uncaught exception:', error);
-  process.exit(1);
-});
-
-client.login(DISCORD_TOKEN);
+if (DISCORD_TOKEN) {
+  client
+    .login(DISCORD_TOKEN)
+    .catch(error => {
+      console.error(
+        '[DISCORD LOGIN ERROR]',
+        error.message
+      );
+    });
+} else {
+  console.error(
+    '[DISCORD WARNING] Bỏ qua client.login vì thiếu DISCORD_TOKEN.'
+  );
+}
