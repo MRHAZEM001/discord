@@ -1,22 +1,6 @@
-/*
- * DISCORD AI BOT - GEMINI ONLY / SINGLE FILE
- * Node.js 18.18+ | discord.js v14
- *
- * Cài đặt: npm install discord.js dotenv
- * Chạy: node bot.js
- *
- * File .env cần có:
- * DISCORD_TOKEN=...
- * CLIENT_ID=...
- * GUILD_ID=...                 # tùy chọn, để deploy nhanh trong một Guild
- * GEMINI_API_KEY=...
- * GEMINI_MODEL=gemini-2.0-flash
- * AI_TIMEOUT_MS=45000
- * AI_MAX_OUTPUT_TOKENS=1200
- */
-
 require('dotenv').config();
 const path = require('node:path');
+const http = require('node:http');
 const {
   REST, Routes, SlashCommandBuilder, Client, GatewayIntentBits,
   EmbedBuilder, AttachmentBuilder, Events
@@ -31,6 +15,7 @@ const GEMINI_MODEL = env('GEMINI_MODEL') || 'gemini-2.0-flash';
 const REQUEST_TIMEOUT_MS = Number(env('AI_TIMEOUT_MS') || 45000);
 const MAX_OUTPUT_TOKENS = Number(env('AI_MAX_OUTPUT_TOKENS') || 1200);
 const MAX_ATTACHMENT_BYTES = 150 * 1024;
+const PORT = Number(process.env.PORT || 3000);
 
 if (!DISCORD_TOKEN) throw new Error('Thiếu DISCORD_TOKEN trong .env');
 if (!CLIENT_ID) throw new Error('Thiếu CLIENT_ID trong .env');
@@ -205,6 +190,21 @@ function helpEmbed() {
 // -------------------------
 // Bot Discord
 // -------------------------
+// Render Web Service yêu cầu tiến trình mở một cổng HTTP để health/port scan.
+const healthServer = http.createServer((request, response) => {
+  if (request.method === 'GET' && request.url === '/') {
+    response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end('Bot is alive!');
+    return;
+  }
+  response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.end('Not found');
+});
+
+healthServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Health server listening on port ${PORT}`);
+});
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once(Events.ClientReady, async readyClient => {
