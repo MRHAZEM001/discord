@@ -1,5 +1,5 @@
 /*
- * DISCORD AI BOT - GROQ API (LLAMA-3)
+ * DISCORD AI BOT - GROQ API (LLAMA-3.3-70B)
  * Node.js 18.18+ | discord.js v14 | Render Web Service
  */
 
@@ -242,7 +242,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const helpEmbed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('📚 HƯỚNG DẪN SỬ DỤNG BOT')
-        .setDescription('Bot sử dụng Groq AI (Llama-3) hỗ trợ giải đáp & sửa lỗi mã nguồn.')
+        .setDescription('Bot sử dụng Groq AI (Llama-3.3) hỗ trợ giải đáp & sửa lỗi mã nguồn.')
         .addFields(
           { name: '🤖 Sử dụng /bot', value: '`/bot cau_hoi:<nội dung> che_do:<bypass|expert|fast|repair> [file_dinh_kem:<file>]`' }
         );
