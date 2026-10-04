@@ -30,7 +30,7 @@ const safeNumber = (value, fallback, min, max) => {
 };
 
 // -------------------------
-// Biến môi trường (Environment Variables)
+// Biến môi trường
 // -------------------------
 const DISCORD_TOKEN = env('DISCORD_TOKEN');
 const CLIENT_ID = env('CLIENT_ID');
@@ -288,7 +288,7 @@ client.on(Events.InteractionCreate, async interaction => {
       if (index === 0) {
         embed.setTitle('🤖 TRỢ LÝ GROQ AI').addFields(
           { name: '👤 Người hỏi', value: `${interaction.user}`, inline: true },
-          { name: '⚙️️ Chế độ', value: modeInfo.label, inline: true },
+          { name: '⚙️ Chế độ', value: modeInfo.label, inline: true },
           { name: '❓ Câu hỏi', value: `${question}${file ? `\n📎 File: ${file.name}` : ''}`.slice(0, 1024) }
         );
       }
