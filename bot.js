@@ -1,3 +1,11 @@
+/*
+ * DISCORD AI BOT - GEMINI ONLY / SINGLE FILE (SDK VERSION)
+ * Node.js 18.18+ | discord.js v14 | Render Web Service
+ *
+ * Cài đặt: npm install @google/generative-ai discord.js dotenv
+ * Chạy: node bot.js
+ */
+
 require('dotenv').config();
 
 const path = require('node:path');
