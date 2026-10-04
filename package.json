@@ -1,15 +1,15 @@
 {
-  "name": "gemini-discord-bot",
+  "name": "groq-discord-bot",
   "version": "1.0.0",
-  "description": "Discord Bot powered by Google Gemini AI",
+  "description": "Discord Bot powered by Groq Llama-3 AI",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "groq-sdk": "^0.7.0"
   },
   "engines": {
     "node": ">=18.18.0"
