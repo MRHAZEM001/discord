@@ -1,5 +1,5 @@
 /*
- * DISCORD AI BOT - GROQ API (LLAMA-3.3-70B)
+ * DISCORD AI BOT - GROQ API (LLAMA-3)
  * Node.js 18.18+ | discord.js v14 | Render Web Service
  */
 
@@ -188,7 +188,7 @@ async function askGroq(question, mode, file) {
         { role: 'system', content: systemInstruction },
         { role: 'user', content: promptContent }
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama3-70b-8192', // Đã cập nhật tên model chính xác của Groq
       temperature: mode === 'fast' ? 0.2 : 0.5,
       max_tokens: MAX_OUTPUT_TOKENS
     });
@@ -242,7 +242,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const helpEmbed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('📚 HƯỚNG DẪN SỬ DỤNG BOT')
-        .setDescription('Bot sử dụng Groq AI (Llama-3.3) hỗ trợ giải đáp & sửa lỗi mã nguồn.')
+        .setDescription('Bot sử dụng Groq AI hỗ trợ giải đáp & sửa lỗi mã nguồn.')
         .addFields(
           { name: '🤖 Sử dụng /bot', value: '`/bot cau_hoi:<nội dung> che_do:<bypass|expert|fast|repair> [file_dinh_kem:<file>]`' }
         );
