@@ -1,6 +1,7 @@
 {
   "name": "discord-gemini-bot",
   "version": "1.0.0",
+  "description": "Discord Gemini Bot for Render",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -9,5 +10,8 @@
     "@google/generative-ai": "^0.21.0",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.18.0"
   }
 }
